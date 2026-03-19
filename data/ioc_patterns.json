@@ -1,0 +1,1083 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-03-17",
+  "about": "Local-only macOS IOC and behavioral triage rules for persistence, stealers, suspicious launch items, loaders, and risky network activity. Tuned to reduce false positives from normal app bundles and binary resources. Includes conservative profile, TCC, trust-store, and diagnostic-crash triage signals for advanced mercenary-spyware context.",
+  "rules": [
+    {
+      "id": "launchagent_hidden_user_exec",
+      "title": "LaunchAgent points to hidden executable in a user-writable path",
+      "family": "Generic Persistence / Adware / Stealer",
+      "threat_level": "high",
+      "author_or_actor": "Common tradecraft across many macOS stealers and adware families",
+      "description": "Flags LaunchAgents that start hidden executables or scripts from user-writable locations like a home directory, temp path, or hidden dot-folder. This pattern is common in macOS stealers, droppers, and adware.",
+      "file_globs": [
+        "~/Library/LaunchAgents/*.plist",
+        "/Library/LaunchAgents/*.plist"
+      ],
+      "plist_program_regexes": [
+        "(?i)^/Users/[^/]+/\\.[^/]+",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/\\.[^/]+",
+        "(?i)^/(private/)?(tmp|var/tmp)/"
+      ],
+      "path_presence_is_match": false
+    },
+    {
+      "id": "launchagent_encoded_script",
+      "title": "LaunchAgent runs base64 / osascript / curl pipeline",
+      "family": "Generic Persistence / Dropper",
+      "threat_level": "high",
+      "author_or_actor": "Common across malicious installers and stealers",
+      "description": "Flags LaunchAgents that use encoded shell, AppleScript, curl|sh, or other staged execution patterns often seen in macOS droppers and infostealers.",
+      "file_globs": [
+        "~/Library/LaunchAgents/*.plist",
+        "/Library/LaunchAgents/*.plist",
+        "/Library/LaunchDaemons/*.plist"
+      ],
+      "plist_argument_regexes": [
+        "(?i)base64\\s+-d",
+        "(?i)\\bcurl\\b.*\\|\\s*(sh|bash|zsh)",
+        "(?i)\\bwget\\b.*\\|\\s*(sh|bash|zsh)",
+        "(?i)\\bosascript\\b",
+        "(?i)\\bpython(?:3)?\\s+-c\\b",
+        "(?i)\\bperl\\s+-e\\b"
+      ]
+    },
+    {
+      "id": "launchdaemon_tmp_exec",
+      "title": "LaunchDaemon points into temp or user paths",
+      "family": "Generic Persistence",
+      "threat_level": "high",
+      "author_or_actor": "Common post-compromise persistence pattern",
+      "description": "LaunchDaemons should not normally execute binaries from temp or user profile paths. This rule highlights that mismatch.",
+      "file_globs": [
+        "/Library/LaunchDaemons/*.plist"
+      ],
+      "plist_program_regexes": [
+        "(?i)^/(private/)?(tmp|var/tmp)/",
+        "(?i)^/Users/"
+      ]
+    },
+    {
+      "id": "shell_profile_curl_pipe",
+      "title": "Shell profile contains curl|sh, base64, or background launch trick",
+      "family": "Generic Script Persistence",
+      "threat_level": "high",
+      "author_or_actor": "Common across shell-based droppers",
+      "description": "Flags shell startup files that contain suspicious one-liners often used for persistence, staging, or credential prompts.",
+      "file_globs": [
+        "~/.zshrc",
+        "~/.zprofile",
+        "~/.zlogin",
+        "~/.bash_profile",
+        "~/.bashrc",
+        "~/.profile"
+      ],
+      "content_regexes": [
+        "(?i)\\bcurl\\b.*\\|\\s*(sh|bash|zsh)",
+        "(?i)\\bwget\\b.*\\|\\s*(sh|bash|zsh)",
+        "(?i)base64\\s+-d",
+        "(?i)\\blaunchctl\\b.*\\b(load|bootstrap|kickstart|submit)\\b",
+        "(?i)\\bosascript\\b.*display dialog",
+        "(?i)\\bnohup\\b.+&\\s*$"
+      ]
+    },
+    {
+      "id": "hidden_exec_common_drop_locations",
+      "title": "Hidden executable or script in common drop locations",
+      "family": "Generic Stealer / Dropper",
+      "threat_level": "mid",
+      "author_or_actor": "Common across many macOS malware families",
+      "description": "Flags hidden or deceptively named executable-like files in temp and user staging locations. Normal downloads are excluded unless the filename itself is hidden or updater-like.",
+      "file_globs": [
+        "/private/tmp/**",
+        "/var/tmp/**",
+        "~/Library/Application Support/**",
+        "~/Library/Caches/**",
+        "~/Downloads/*"
+      ],
+      "path_regexes": [
+        "(?i)/(?:private/tmp|var/tmp|Library/Application Support|Library/Caches|Downloads)/(?:\\.[^/]+\\.(?:command|sh|py|js|app|bin|dylib|plist)|[^/]*(?:update|updater|helper|agent|daemon|svc)[^/]*\\.(?:command|sh|app|dylib|plist))$"
+      ],
+      "path_presence_is_match": true,
+      "exclude_path_regexes": [
+        "(?i)/Contents/",
+        "(?i)/Frameworks/",
+        "(?i)/node_modules/",
+        "(?i)/\\.git/",
+        "(?i)/Library/Caches/com\\.apple\\.",
+        "(?i)/Library/Application Support/Google/",
+        "(?i)/Library/Application Support/Microsoft/",
+        "(?i)/Downloads/[^/]+\\.(?:js|dmg|pkg)$",
+        "(?i)/Downloads/(?:googlechrome|android-studio|jre-)[^/]+\\.(?:dmg|pkg)$"
+      ],
+      "max_findings": 20
+    },
+    {
+      "id": "tmp_folder_contains_launchd_related_files",
+      "title": "Temp folder contains launchd-related artifacts",
+      "family": "Generic Persistence Staging",
+      "threat_level": "mid",
+      "author_or_actor": "Common staging behavior",
+      "description": "Flags suspicious persistence staging files in temp paths that reference launch agents, daemons, or login helpers.",
+      "file_globs": [
+        "/private/tmp/**",
+        "/var/tmp/**",
+        "~/Downloads/**"
+      ],
+      "filename_regexes": [
+        "(?i)(launchagent|launchdaemon|loginitem|helper|updater|agent|daemon).*\\.(plist|sh|command|app|pkg)$"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "login_item_like_names_in_user_support",
+      "title": "Updater/helper binary in user Application Support",
+      "family": "Adware / Stealer Persistence",
+      "threat_level": "mid",
+      "author_or_actor": "Common in adware and MaaS stealers",
+      "description": "Highlights updater/helper-style executables living in user-writable Application Support or Caches where persistence is often staged.",
+      "file_globs": [
+        "~/Library/Application Support/**",
+        "~/Library/Caches/**"
+      ],
+      "path_regexes": [
+        "(?i)/(updater|helper|agent|daemon|service|sync|updateassistant)([^/]*?)\\.(app|plist|command|sh|py|js|bin|dylib)$"
+      ],
+      "path_presence_is_match": true,
+      "exclude_path_regexes": [
+        "(?i)/Contents/",
+        "(?i)/Frameworks/",
+        "(?i)/PlugIns/",
+        "(?i)/Google/",
+        "(?i)/Microsoft/",
+        "(?i)/Adobe/",
+        "(?i)/Dropbox/",
+        "(?i)/OneDrive/",
+        "(?i)/Docker/",
+        "(?i)/JetBrains/",
+        "(?i)/Visual Studio Code/"
+      ],
+      "max_findings": 25
+    },
+    {
+      "id": "poseidon_amos_odyssey_keywords",
+      "title": "Known stealer family keyword on disk",
+      "family": "Poseidon / AMOS / Odyssey / SHub",
+      "threat_level": "high",
+      "author_or_actor": "Mac-focused infostealer ecosystem",
+      "description": "Flags obvious stealer-family names or lure strings on disk. This catches low-effort rebrands, unpacked samples, notes, or staging files carrying family identifiers.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "~/Library/Application Support/**",
+        "/private/tmp/**"
+      ],
+      "filename_regexes": [
+        "(?i)(poseidon|atomic\\s*stealer|amos|odyssey|rodstealer|shub|macsync\\s*stealer|macstealer)"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "fake_browser_or_utility_lures",
+      "title": "High-risk lure installer in common user folders",
+      "family": "Social Engineering Lure",
+      "threat_level": "low",
+      "author_or_actor": "Common in malvertising and fake download campaigns",
+      "description": "Flags common macOS lure names frequently used in fake-browser, wallet, and utility download chains. Treat as triage, not proof by itself.",
+      "file_globs": [
+        "~/Downloads/*",
+        "~/Desktop/*"
+      ],
+      "filename_regexes": [
+        "(?i)\\b(?:Arc|Ledger\\s*Live|Notion|TradingView|CleanMyMac|KeePassXC|Bitwarden|1Password|MetaMask)\\b.*\\.(?:dmg|pkg|app|zip)$"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "fake_cleanmymac_shub_keywords",
+      "title": "Fake CleanMyMac / SHub stealer lure markers",
+      "family": "SHub Stealer",
+      "threat_level": "high",
+      "author_or_actor": "SHub stealer operators",
+      "description": "Targets obvious SHub-style lure naming tied to fake utility downloads and backdoored wallet theft campaigns.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "/private/tmp/**"
+      ],
+      "filename_regexes": [
+        "(?i)(cleanmymac|cmm|maccleaner).*(fix|update|installer|patch|crack|setup).*\\.(dmg|pkg|app|zip)$"
+      ],
+      "path_presence_is_match": true
+    },
+    {
+      "id": "wallet_and_password_app_targeting_keywords",
+      "title": "Stealer staging references wallet, keychain, password managers, or VPNs",
+      "family": "Infostealer Tradecraft",
+      "threat_level": "high",
+      "author_or_actor": "Common in Poseidon / AMOS-style stealers",
+      "description": "Flags staging scripts and notes that explicitly mention wallet theft, keychain access, browser credentials, VPN configs, or password managers.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "~/Library/Application Support/**",
+        "/private/tmp/**"
+      ],
+      "content_regexes": [
+        "(?i)(MetaMask|Exodus|Phantom|Ledger|Keplr|Coinbase Wallet|Trust Wallet|login\\.keychain|Chrome Login Data|Cookies|Bitwarden|KeePassXC|FileZilla|OpenVPN|Fortinet|Browser Data)",
+        "(?i)(steal|exfil|archive|collect|dump|copy|read|export|upload|grab|decrypt|find-generic-password|security\\s+find-)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".sh",
+        ".zsh",
+        ".bash",
+        ".command",
+        ".py",
+        ".js",
+        ".ts",
+        ".json",
+        ".plist",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".pbxproj",
+        ".scpt",
+        ".applescript"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.venv/",
+        "(?i)/site-packages/",
+        "(?i)/node_modules/",
+        "(?i)/fontawesome/",
+        "(?i)/dist/renderer/assets/",
+        "(?i)/vendor/",
+        "(?i)/tests?/",
+        "(?i)/fixtures?/",
+        "(?i)/artifacts?/",
+        "(?i)/mac_sentinel",
+        "(?i)/mvt/",
+        "(?i)/assets/site/"
+      ],
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/[^/]+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/private/tmp/.+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/Users/[^/]+/Library/(LaunchAgents|LaunchDaemons)/.+\\.plist$",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/.+(helper|updater|agent|daemon).+\\.(plist|sh|command|py|js|scpt|applescript|dylib)$"
+      ]
+    },
+    {
+      "id": "xcsset_xcodeproj_suspicious_run_script",
+      "title": "Xcode project file contains suspicious run-script patterns",
+      "family": "XCSSET / Xcode Project Malware",
+      "threat_level": "high",
+      "author_or_actor": "XCSSET operators or copycats",
+      "description": "Flags Xcode project files with suspicious script-phase content such as curl, osascript, base64, temp execution, or credential theft indicators.",
+      "file_globs": [
+        "~/Documents/**/*.pbxproj",
+        "~/Desktop/**/*.pbxproj",
+        "~/Downloads/**/*.pbxproj",
+        "~/Developer/**/*.pbxproj"
+      ],
+      "content_regexes": [
+        "(?i)\\b(shellScript|isa\\s*=\\s*PBXShellScriptBuildPhase)\\b",
+        "(?i)(\\bcurl\\b|\\bwget\\b|\\bosascript\\b|base64\\s+-d|find-generic-password|security\\s+find-|login\\.keychain|authorized_keys|launchctl\\s+(load|bootstrap)|zip\\s+-r|tar\\s+-c)"
+      ],
+      "max_file_size_bytes": 1048576,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".pbxproj"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/Pods/"
+      ]
+    },
+    {
+      "id": "xcode_project_references_browser_or_wallet_data",
+      "title": "Xcode project references browser, notes, wallet, or Telegram data",
+      "family": "XCSSET / Stealer",
+      "threat_level": "high",
+      "author_or_actor": "XCSSET operators or similar developer-targeting malware",
+      "description": "Flags Xcode project files that appear to reference application data types often targeted by macOS developer-focused malware.",
+      "file_globs": [
+        "~/Documents/**/*.pbxproj",
+        "~/Desktop/**/*.pbxproj",
+        "~/Downloads/**/*.pbxproj",
+        "~/Developer/**/*.pbxproj"
+      ],
+      "content_regexes": [
+        "(?i)(Telegram|Notes|Chrome|Cookies|Wallet|MetaMask|Keychain|Safari|Firefox)"
+      ],
+      "max_file_size_bytes": 1048576
+    },
+    {
+      "id": "xcode_build_process_suspicious_cmdline",
+      "title": "Active Xcode-related process using osascript / curl / base64",
+      "family": "XCSSET Runtime",
+      "threat_level": "high",
+      "author_or_actor": "Developer-targeting malware pattern",
+      "description": "Flags Xcode or xcodebuild related command lines that include suspicious script or download behavior.",
+      "process_name_regexes": [
+        "(?i)(xcodebuild|Xcode|sh|bash|zsh|python|osascript)"
+      ],
+      "process_cmdline_regexes": [
+        "(?i)(xcodebuild|Xcode).*(curl|wget|osascript|base64\\s+-d|python(?:3)?\\s+-c)"
+      ]
+    },
+    {
+      "id": "xcode_project_tmp_stager",
+      "title": "Xcode project or derived files staged in temp locations",
+      "family": "Developer Targeting / Dropper",
+      "threat_level": "mid",
+      "author_or_actor": "Uncommon for normal workflows",
+      "description": "Flags Xcode project-like files in temp paths, which can indicate staging or project infection workflows.",
+      "file_globs": [
+        "/private/tmp/**",
+        "/var/tmp/**"
+      ],
+      "filename_regexes": [
+        "(?i)(xcode|project|pbxproj|DerivedData|workspace)"
+      ],
+      "path_presence_is_match": true
+    },
+    {
+      "id": "adload_shlayer_bundlore_keywords",
+      "title": "Known macOS adware family keyword on disk",
+      "family": "Adload / Shlayer / Bundlore / Pirrit / Genieo",
+      "threat_level": "mid",
+      "author_or_actor": "Various adware operators",
+      "description": "Flags obvious family names in unpacked samples, logs, staging files, or leftover artifacts from well-known macOS adware families.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Library/Application Support/**",
+        "/private/tmp/**"
+      ],
+      "filename_regexes": [
+        "(?i)(adload|shlayer|bundlore|pirrit|genieo|searchmine|cimpli|bnodlero)"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "browser_profile_manipulation_keywords",
+      "title": "Browser-related script mentions search hijack, extension install, or profile tampering",
+      "family": "Adware / Browser Hijack",
+      "threat_level": "mid",
+      "author_or_actor": "Common across macOS adware",
+      "description": "Flags scripts that appear to tamper with browser profiles, search settings, or extension install flows.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "~/Library/Application Support/**"
+      ],
+      "content_regexes": [
+        "(?i)(Default/Search|Secure Preferences|Extensions/|com\\.google\\.Chrome|BraveSoftware|Microsoft Edge|Login Data)",
+        "(?i)(install extension|search hijack|newtab|default_search_provider|override|homepage|writeFile|copyFile|plutil|defaults write)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".sh",
+        ".zsh",
+        ".bash",
+        ".command",
+        ".py",
+        ".js",
+        ".ts",
+        ".json",
+        ".plist",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".txt"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.app/",
+        "(?i)/node_modules/",
+        "(?i)/site-packages/",
+        "(?i)/\\.venv/",
+        "(?i)/fontawesome/",
+        "(?i)/dist/renderer/assets/",
+        "(?i)/vendor/",
+        "(?i)/tests?/",
+        "(?i)/fixtures?/",
+        "(?i)/artifacts?/",
+        "(?i)/mac_sentinel",
+        "(?i)/mvt/",
+        "(?i)/assets/site/"
+      ],
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/[^/]+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/private/tmp/.+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/Users/[^/]+/Library/(LaunchAgents|LaunchDaemons)/.+\\.plist$",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/.+(helper|updater|agent|daemon).+\\.(plist|sh|command|py|js|scpt|applescript|dylib)$"
+      ]
+    },
+    {
+      "id": "applescript_password_prompt",
+      "title": "AppleScript credential-prompt behavior in script or launch item",
+      "family": "Credential Theft / Social Engineering",
+      "threat_level": "high",
+      "author_or_actor": "Common across many stealers",
+      "description": "Flags AppleScript that attempts password prompts, fake security warnings, or hidden execution.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "~/Library/LaunchAgents/*.plist",
+        "/private/tmp/**"
+      ],
+      "content_regexes": [
+        "(?i)(display dialog .*password|with hidden answer|do shell script .*administrator privileges)",
+        "(?i)(osascript|display dialog|administrator privileges|hidden answer)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".scpt",
+        ".applescript",
+        ".txt",
+        ".plist",
+        ".sh",
+        ".command",
+        ".js"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.app/",
+        "(?i)/node_modules/",
+        "(?i)/site-packages/"
+      ]
+    },
+    {
+      "id": "tcc_protected_data_collection_terms",
+      "title": "Script references protected data stores often targeted in Mac breaches",
+      "family": "Data Theft / Privacy Bypass",
+      "threat_level": "high",
+      "author_or_actor": "Generic post-exploitation behavior",
+      "description": "Flags scripts that mention TCC-protected or privacy-sensitive stores such as Mail, Safari, Messages, Notes, or Apple Intelligence-related paths.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "/private/tmp/**",
+        "~/Library/Application Support/**"
+      ],
+      "content_regexes": [
+        "(?i)(~/Library/Mail|~/Library/Messages|~/Library/Safari|~/Library/Containers/com\\.apple\\.Notes|NotesV\\d\\.storedata|History\\.db|TCC\\.db|AddressBook|Photos\\.sqlite|Apple Intelligence)",
+        "(?i)(TCC|Privacy|protected files|extract|exfil|steal|archive|copy|collect|dump|upload)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".sh",
+        ".zsh",
+        ".bash",
+        ".command",
+        ".py",
+        ".js",
+        ".ts",
+        ".json",
+        ".plist",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".scpt",
+        ".applescript"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.app/",
+        "(?i)/node_modules/",
+        "(?i)/site-packages/",
+        "(?i)/\\.venv/",
+        "(?i)/fontawesome/",
+        "(?i)/dist/renderer/assets/",
+        "(?i)/vendor/",
+        "(?i)/tests?/",
+        "(?i)/fixtures?/",
+        "(?i)/artifacts?/",
+        "(?i)/mac_sentinel",
+        "(?i)/mvt/",
+        "(?i)/assets/site/"
+      ],
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/[^/]+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/private/tmp/.+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/Users/[^/]+/Library/(LaunchAgents|LaunchDaemons)/.+\\.plist$",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/.+(helper|updater|agent|daemon).+\\.(plist|sh|command|py|js|scpt|applescript|dylib)$"
+      ]
+    },
+    {
+      "id": "launchctl_suspicious_hidden_labels",
+      "title": "Active launchctl label looks like hidden helper or updater",
+      "family": "Persistence",
+      "threat_level": "low",
+      "author_or_actor": "Generic persistence pattern",
+      "description": "Flags non-Apple, non-major-vendor launchctl labels that use helper/update/service naming often abused for persistence. This is a triage rule only.",
+      "launchd_label_regexes": [
+        "(?i)(updater|updateagent|helper|service|daemon|sync|agent)"
+      ],
+      "launchd_label_exclude_regexes": [
+        "^com\\.apple\\.",
+        "^com\\.google\\.",
+        "^com\\.microsoft\\.",
+        "^com\\.adobe\\.",
+        "^com\\.oracle\\.",
+        "^com\\.openssh\\.",
+        "^org\\.mozilla\\.",
+        "^com\\.jetbrains\\.",
+        "^com\\.github\\.",
+        "^com\\.docker\\.",
+        "^com\\.googlecode\\.",
+        "^com\\.obsproject\\.",
+        "^homebrew\\.",
+        "^org\\.python\\."
+      ]
+    },
+    {
+      "id": "launchctl_known_family_labels",
+      "title": "Active launchctl label references known family names",
+      "family": "Known Malware Family",
+      "threat_level": "high",
+      "author_or_actor": "Various macOS malware operators",
+      "description": "Flags currently loaded launchctl labels containing well-known family names.",
+      "launchd_label_regexes": [
+        "(?i)(poseidon|amos|odyssey|xcsset|silver\\s*sparrow|shlayer|adload|bundlore|searchmine)"
+      ]
+    },
+    {
+      "id": "process_tmp_exec_with_networking_tools",
+      "title": "Process launched from temp or hidden user path using networking tools",
+      "family": "Dropper / Stealer Runtime",
+      "threat_level": "high",
+      "author_or_actor": "Common across post-download compromise chains",
+      "description": "Flags active command lines running from temp or hidden user paths while invoking curl, wget, openssl, ssh, scp, python, node, or osascript.",
+      "process_cmdline_regexes": [
+        "(?i)^/(private/)?(tmp|var/tmp)/.*\\b(curl|wget|openssl|ssh|scp|python|python3|node|osascript)\\b",
+        "(?i)^/Users/[^/]+/\\.[^ ]+.*\\b(curl|wget|openssl|ssh|scp|python|python3|node|osascript)\\b"
+      ]
+    },
+    {
+      "id": "process_password_prompt_tools",
+      "title": "Active process chain with osascript and hidden answer / admin prompt",
+      "family": "Credential Theft",
+      "threat_level": "high",
+      "author_or_actor": "Common in infostealers and fake fix tools",
+      "description": "Flags active command lines attempting password capture or abuse of administrator-privileged shell scripts.",
+      "process_cmdline_regexes": [
+        "(?i)osascript.*with hidden answer",
+        "(?i)do shell script .*administrator privileges",
+        "(?i)(security find-generic-password|security dump-keychain|login\\.keychain)"
+      ]
+    },
+    {
+      "id": "dev_tool_abuse_with_archiving",
+      "title": "Command line archives browser, wallet, or keychain data",
+      "family": "Exfiltration Staging",
+      "threat_level": "high",
+      "author_or_actor": "Common post-compromise collection behavior",
+      "description": "Flags command lines using zip, tar, ditto, or rsync against browser profiles, wallet folders, or keychain stores.",
+      "process_cmdline_regexes": [
+        "(?i)\\b(zip|tar|ditto|rsync)\\b.*(Chrome|Brave|Firefox|Safari|Wallet|MetaMask|Keychain|KeePassXC|Bitwarden)"
+      ]
+    },
+    {
+      "id": "network_hidden_user_exec_outbound",
+      "title": "Outbound connection from hidden or temp-backed executable",
+      "family": "Suspicious Runtime Networking",
+      "threat_level": "high",
+      "author_or_actor": "Common across stealers and loaders",
+      "description": "Flags processes whose command line points to a hidden user path or temp path and that also have an active network connection.",
+      "network_proc_cmdline_regexes": [
+        "(?i)^/(private/)?(tmp|var/tmp)/",
+        "(?i)^/Users/[^/]+/\\.[^ ]+",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/\\.[^ ]+"
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "network_python_node_osascript_temp_exec",
+      "title": "Temp-backed script runtime making live connection",
+      "family": "Dropper / Exfiltration",
+      "threat_level": "high",
+      "author_or_actor": "Common malicious staging behavior",
+      "description": "Flags python, node, shell, or osascript command lines launched from temp or staging paths that are also making outbound connections.",
+      "network_proc_name_regexes": [
+        "(?i)(python|python3|node|sh|bash|zsh|osascript)"
+      ],
+      "network_proc_cmdline_regexes": [
+        "(?i)(/(private/)?(tmp|var/tmp)/|/Users/[^/]+/Downloads/|/Users/[^/]+/Library/Application Support/)"
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "network_common_c2_ports",
+      "title": "Connection to port often seen in commodity backdoors or tunnels",
+      "family": "C2 / Tunnel Triage",
+      "threat_level": "mid",
+      "author_or_actor": "Generic operator infrastructure",
+      "description": "Flags active connections to ports that are often used by generic RATs, tunnels, or reverse shells. This is triage-oriented and can produce false positives.",
+      "network_remote_ports": [
+        4444,
+        5555,
+        6666,
+        6667,
+        7777,
+        1337,
+        31337,
+        9050,
+        9150
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "network_wallet_or_browser_theft_process",
+      "title": "Networking process mentions wallets, browsers, or credentials",
+      "family": "Infostealer Exfiltration",
+      "threat_level": "high",
+      "author_or_actor": "Common in macOS infostealers",
+      "description": "Flags live connections from processes whose command line explicitly mentions wallet, browser, cookie, credential, keychain, or note collection targets.",
+      "network_proc_cmdline_regexes": [
+        "(?i)(wallet|metamask|phantom|ledger|cookie|cookies|login data|keychain|credential|telegram|notes|browser data)"
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "network_remote_rsync_ssh_hidden_exec",
+      "title": "Hidden or temp process using SSH/rsync/scp-like outbound channel",
+      "family": "Exfiltration / Lateral Movement",
+      "threat_level": "high",
+      "author_or_actor": "Generic post-exploitation behavior",
+      "description": "Flags hidden or temp-backed processes communicating over remote admin or file-transfer channels.",
+      "network_proc_cmdline_regexes": [
+        "(?i)(/(private/)?(tmp|var/tmp)/|/Users/[^/]+/\\.)"
+      ],
+      "network_remote_ports": [
+        22,
+        2222,
+        873
+      ],
+      "network_protocols": [
+        "TCP"
+      ]
+    },
+    {
+      "id": "network_suspicious_non_browser_download_path",
+      "title": "Live connection from executable inside Downloads",
+      "family": "User-space Stager",
+      "threat_level": "mid",
+      "author_or_actor": "Common shortly after user-executed malware install",
+      "description": "Flags live connections from processes launched directly out of Downloads. Legitimate installers can also do this, so triage carefully.",
+      "network_proc_cmdline_regexes": [
+        "(?i)^/Users/[^/]+/Downloads/"
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "browser_extension_wallet_injection_keywords",
+      "title": "Extension or manifest contains wallet injection / credential theft terms",
+      "family": "Browser Wallet Theft",
+      "threat_level": "high",
+      "author_or_actor": "Common in injected browser payloads",
+      "description": "Flags manifest or script files that mention wallet injection, credential theft, cookie grabbing, or browser data exfiltration.",
+      "file_globs": [
+        "~/Library/Application Support/Google/Chrome/**",
+        "~/Library/Application Support/BraveSoftware/**",
+        "~/Library/Application Support/Microsoft Edge/**",
+        "~/Library/Application Support/Firefox/**"
+      ],
+      "filename_regexes": [
+        "(?i)(manifest\\.json|background.*\\.js|service_worker.*\\.js|content.*\\.js)"
+      ],
+      "content_regexes": [
+        "(?i)(wallet|metamask|phantom|cookie|credential|password|keychain|exfil|seed phrase)"
+      ],
+      "max_file_size_bytes": 524288
+    },
+    {
+      "id": "browser_extension_obvious_family_names",
+      "title": "Browser profile contains known stealer family names",
+      "family": "Known Infostealer Family",
+      "threat_level": "high",
+      "author_or_actor": "Various macOS stealer operators",
+      "description": "Flags browser profile files with family strings like poseidon, amos, or odyssey.",
+      "file_globs": [
+        "~/Library/Application Support/Google/Chrome/**/Extensions/**",
+        "~/Library/Application Support/BraveSoftware/**/Extensions/**",
+        "~/Library/Application Support/Microsoft Edge/**/Extensions/**",
+        "~/Library/Application Support/Firefox/**/extensions/**"
+      ],
+      "content_regexes": [
+        "(?i)(poseidon(?:\\s*stealer)?|atomic\\s*stealer|atomic\\s*macos\\s*stealer|odyssey\\s*stealer|rodstealer|macsync)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_extensions_include": [
+        ".json",
+        ".js",
+        ".txt",
+        ".html",
+        ".htm"
+      ],
+      "path_regexes": [
+        "(?i)/(manifest\\.json|background[^/]*\\.js|service[-_ ]worker[^/]*\\.js|worker[^/]*\\.js|content[^/]*\\.js|inject[^/]*\\.js|index\\.js|main\\.js)$"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/_locales/",
+        "(?i)/messages\\.json$"
+      ]
+    },
+    {
+      "id": "mobileconfig_suspicious_payload_keywords",
+      "title": "Downloaded mobileconfig/profile with risky scope or proxy/VPN controls",
+      "family": "Profile Abuse",
+      "threat_level": "mid",
+      "author_or_actor": "Could be enterprise, could be malicious",
+      "description": "Flags downloaded configuration profiles that declare proxy, root certificates, VPN, web clip, or device management style payloads. Treat as triage.",
+      "file_globs": [
+        "~/Downloads/**/*.mobileconfig",
+        "~/Desktop/**/*.mobileconfig",
+        "~/Documents/**/*.mobileconfig"
+      ],
+      "content_regexes": [
+        "(?i)(PayloadType|com\\.apple\\.managedclient|com\\.apple\\.vpn|Proxy|Certificate|Root|PayloadScope)"
+      ],
+      "max_file_size_bytes": 524288
+    },
+    {
+      "id": "pkg_preinstall_postinstall_scripts",
+      "title": "Installer script mentions preinstall/postinstall with curl, launchctl, or tmp staging",
+      "family": "Malicious Installer Pattern",
+      "threat_level": "high",
+      "author_or_actor": "Seen across multiple macOS installer-based malware families",
+      "description": "Flags installer scripts that use common persistence or staging behavior such as curl, launchctl, temp extraction, or hidden execution.",
+      "file_globs": [
+        "~/Downloads/**/preinstall",
+        "~/Downloads/**/postinstall",
+        "/private/tmp/**/preinstall",
+        "/private/tmp/**/postinstall"
+      ],
+      "content_regexes": [
+        "(?i)(curl|wget|launchctl|osascript|/private/tmp|/var/tmp|chmod \\+x|xattr -d)"
+      ],
+      "max_file_size_bytes": 262144
+    },
+    {
+      "id": "silver_sparrow_keywords",
+      "title": "Silver Sparrow style keyword on disk or in scripts",
+      "family": "Silver Sparrow",
+      "threat_level": "high",
+      "author_or_actor": "Silver Sparrow operators",
+      "description": "Flags obvious Silver Sparrow family naming in unpacked files or scripts. This is narrow and mostly useful for leftover artifacts or samples.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "/private/tmp/**",
+        "~/Library/Application Support/**"
+      ],
+      "filename_regexes": [
+        "(?i)(silver\\s*sparrow|updateragent|verx|agent\\.plist)"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "ssh_key_dropper_terms",
+      "title": "Script references authorized_keys or SSH persistence",
+      "family": "Persistence / Remote Access",
+      "threat_level": "high",
+      "author_or_actor": "Generic post-exploitation behavior",
+      "description": "Flags scripts that appear to install SSH persistence, modify authorized_keys, or prepare remote shell access.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "/private/tmp/**"
+      ],
+      "content_regexes": [
+        "(?i)(authorized_keys|ssh-rsa|ssh-ed25519|~/.ssh|/Users/.*/\\.ssh)",
+        "(?i)(echo .*>>.*authorized_keys|mkdir -p .*\\.ssh)"
+      ],
+      "max_file_size_bytes": 524288,
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/[^/]+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/private/tmp/.+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/Users/[^/]+/Library/(LaunchAgents|LaunchDaemons)/.+\\.plist$",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/.+(helper|updater|agent|daemon).+\\.(plist|sh|command|py|js|scpt|applescript|dylib)$"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/node_modules/",
+        "(?i)/site-packages/",
+        "(?i)/\\.venv/",
+        "(?i)/fontawesome/",
+        "(?i)/dist/renderer/assets/",
+        "(?i)/vendor/",
+        "(?i)/tests?/",
+        "(?i)/fixtures?/",
+        "(?i)/artifacts?/",
+        "(?i)/mac_sentinel",
+        "(?i)/mvt/",
+        "(?i)/assets/site/"
+      ],
+      "content_min_matches": 2
+    },
+    {
+      "id": "cron_like_persistence_files",
+      "title": "Cron or periodic file with suspicious networking or hidden execution",
+      "family": "Scheduler Persistence",
+      "threat_level": "mid",
+      "author_or_actor": "Generic persistence pattern",
+      "description": "Flags scheduled shell files or crontab-like entries using networking or hidden execution patterns.",
+      "file_globs": [
+        "/etc/crontab",
+        "/etc/periodic/**",
+        "/usr/local/etc/cron*/*",
+        "~/.crontab",
+        "~/.config/**"
+      ],
+      "content_regexes": [
+        "(?i)(curl|wget|osascript|base64\\s+-d|python(?:3)?\\s+-c|/private/tmp|/var/tmp|/Users/[^/]+/\\.)"
+      ],
+      "max_file_size_bytes": 524288
+    },
+    {
+      "id": "telegram_notes_browser_archive_terms",
+      "title": "Script references Telegram, Notes, browser profiles, or archive creation",
+      "family": "Collection / Exfiltration",
+      "threat_level": "high",
+      "author_or_actor": "Common in XCSSET and modern Mac stealers",
+      "description": "Flags collection scripts that mention Telegram, Notes, browser profile paths, or archive creation steps.",
+      "file_globs": [
+        "~/Downloads/**",
+        "~/Desktop/**",
+        "~/Documents/**",
+        "/private/tmp/**"
+      ],
+      "content_regexes": [
+        "(?i)(Telegram|NotesV\\d|~/Library/Notes|~/Library/Safari|~/Library/Messages|Firefox/Profiles|Google/Chrome|BraveSoftware|Safari/History\\.db|Cookies|Login Data)",
+        "(?i)(zip|tar|ditto|archive|compress|collect|copy|upload|exfil)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".sh",
+        ".zsh",
+        ".bash",
+        ".command",
+        ".py",
+        ".js",
+        ".ts",
+        ".json",
+        ".plist",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".scpt",
+        ".applescript"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.app/",
+        "(?i)/node_modules/",
+        "(?i)/site-packages/",
+        "(?i)/\\.venv/",
+        "(?i)/fontawesome/",
+        "(?i)/dist/renderer/assets/",
+        "(?i)/vendor/",
+        "(?i)/tests?/",
+        "(?i)/fixtures?/",
+        "(?i)/artifacts?/",
+        "(?i)/mac_sentinel",
+        "(?i)/mvt/",
+        "(?i)/assets/site/"
+      ],
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/[^/]+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/private/tmp/.+\\.(command|sh|zsh|bash|py|plist|scpt|applescript|txt|json|js|ts)$",
+        "(?i)^/Users/[^/]+/Library/(LaunchAgents|LaunchDaemons)/.+\\.plist$",
+        "(?i)^/Users/[^/]+/Library/Application Support/[^/]+/.+(helper|updater|agent|daemon).+\\.(plist|sh|command|py|js|scpt|applescript|dylib)$"
+      ]
+    },
+    {
+      "id": "user_writable_dylib_loader_terms",
+      "title": "User-writable dylib or injection terms in script/plist",
+      "family": "Loader / Injection",
+      "threat_level": "high",
+      "author_or_actor": "Generic malicious loader behavior",
+      "description": "Flags scripts and plists in user-writable areas that mention DYLD injection or suspicious dynamic library loading. Normal app binaries are excluded from content scanning.",
+      "file_globs": [
+        "~/Library/**",
+        "~/Downloads/**",
+        "/private/tmp/**",
+        "~/Library/LaunchAgents/*.plist"
+      ],
+      "content_regexes": [
+        "(?i)(DYLD_INSERT_LIBRARIES|dlopen|\\.dylib|install_name_tool|@rpath)"
+      ],
+      "max_file_size_bytes": 524288,
+      "content_extensions_include": [
+        ".sh",
+        ".zsh",
+        ".bash",
+        ".command",
+        ".py",
+        ".js",
+        ".ts",
+        ".json",
+        ".plist",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".txt",
+        ".pbxproj"
+      ],
+      "exclude_path_regexes": [
+        "(?i)/\\.app/",
+        "(?i)/node_modules/",
+        "(?i)/site-packages/"
+      ]
+    },
+    {
+      "id": "network_local_forwarding_tools",
+      "title": "Active connection from tunnel / proxy tooling",
+      "family": "Tunnel / Proxy",
+      "threat_level": "mid",
+      "author_or_actor": "Could be admin activity, could be malicious",
+      "description": "Flags live connections from common tunnel or proxy tools. This is triage-oriented.",
+      "network_proc_name_regexes": [
+        "(?i)(ssh|autossh|socat|nc|ncat|proxy|cloudflared|frpc|frps)"
+      ],
+      "network_protocols": [
+        "TCP",
+        "UDP"
+      ]
+    },
+    {
+      "id": "zip_bundle_contains_macos_script_names",
+      "title": "Downloaded bundle contains macOS script/dropper names",
+      "family": "Social Engineering Bundle",
+      "threat_level": "mid",
+      "author_or_actor": "Common fake-app delivery pattern",
+      "description": "Flags downloaded files with names that commonly ship as disguised script bundles on macOS.",
+      "file_globs": [
+        "~/Downloads/*",
+        "~/Desktop/*"
+      ],
+      "filename_regexes": [
+        "(?i)(install|update|fix|patch|crack|setup).*\\.(zip|dmg|pkg|app|command|sh)$"
+      ],
+      "path_presence_is_match": true,
+      "max_findings": 20
+    },
+    {
+      "id": "plist_randomish_com_label_user_exec",
+      "title": "Launch plist uses generic com-label and user-path execution",
+      "family": "Adware / Persistence",
+      "threat_level": "mid",
+      "author_or_actor": "Common across adware and loaders",
+      "description": "Flags launch plists with bland com.* labels that execute from user-writable locations. Many legitimate apps do this too, so validate before removing.",
+      "file_globs": [
+        "~/Library/LaunchAgents/*.plist",
+        "/Library/LaunchAgents/*.plist"
+      ],
+      "plist_label_regexes": [
+        "(?i)^com\\.[a-z0-9\\-_\\.]{4,}$"
+      ],
+      "plist_program_regexes": [
+        "(?i)^/Users/"
+      ]
+    },
+    {
+      "id": "process_tcc_db_direct_modification",
+      "title": "Process attempts direct TCC database modification",
+      "family": "Privacy Bypass / Post-Exploitation",
+      "threat_level": "high",
+      "author_or_actor": "Generic post-exploitation behavior",
+      "description": "Flags direct sqlite-style modification of TCC.db. This is much higher signal than generic TCC keyword matches.",
+      "process_name_regexes": [],
+      "process_cmdline_regexes": [
+        "(?i)sqlite3\\s+.*TCC\\.db.*\\b(insert|update|replace|delete|alter)\\b",
+        "(?i)python(?:3)?\\s+-c.*TCC\\.db.*\\b(insert|update|replace|delete|alter)\\b"
+      ],
+      "process_cmdline_exclude_regexes": [
+        "(?i)mode=ro"
+      ]
+    },
+    {
+      "id": "process_trusted_root_install",
+      "title": "Process installs a trusted root certificate",
+      "family": "Trust Store Abuse",
+      "threat_level": "low",
+      "author_or_actor": "Could be enterprise admin activity, could be malicious",
+      "description": "Flags root certificate installation commands. Treat as context unless correlated with profile abuse or other findings.",
+      "process_name_regexes": [],
+      "process_cmdline_regexes": [
+        "(?i)security\\s+add-trusted-cert\\b.*\\b(-r\\s+trustRoot|-r\\s+trustAsRoot)\\b"
+      ]
+    },
+    {
+      "id": "process_mobileconfig_install",
+      "title": "Process installs a configuration profile",
+      "family": "Profile Installation",
+      "threat_level": "low",
+      "author_or_actor": "Could be normal administration, could be attack prep",
+      "description": "Flags explicit configuration-profile installation commands. Treat as context unless paired with risky installed payloads or trust changes.",
+      "process_name_regexes": [],
+      "process_cmdline_regexes": [
+        "(?i)profiles\\s+install\\b",
+        "(?i)profiles\\s+-I\\b.*\\.mobileconfig\\b",
+        "(?i)open\\s+.*\\.mobileconfig\\b"
+      ]
+    },
+    {
+      "id": "downloaded_mobileconfig_sensitive_payload_combo",
+      "title": "Downloaded profile contains sensitive control payloads",
+      "family": "Profile Abuse / Attack Prep",
+      "threat_level": "low",
+      "author_or_actor": "Could be enterprise management, could be malicious",
+      "description": "Flags downloaded profiles that combine high-control macOS payloads. This is intentionally low severity unless corroborated by other signals.",
+      "file_globs": [
+        "~/Downloads/**/*.mobileconfig",
+        "~/Desktop/**/*.mobileconfig",
+        "~/Documents/**/*.mobileconfig"
+      ],
+      "path_regexes": [
+        "(?i)^/Users/[^/]+/(Downloads|Desktop|Documents)/.+\\.mobileconfig$"
+      ],
+      "content_regexes": [
+        "(?i)(com\\.apple\\.TCC\\.configuration-profile-policy|com\\.apple\\.security\\.root|com\\.apple\\.vpn\\.managed|com\\.apple\\.dnsProxy\\.managed|com\\.apple\\.webcontent-filter|com\\.apple\\.system-extension-policy|com\\.apple\\.extensiblesso)",
+        "(?i)(System Policy All Files|Accessibility|AppleEvents|Documents Folder|Downloads Folder|PayloadRemovalDisallowed|PayloadScope)"
+      ],
+      "content_min_matches": 2,
+      "content_extensions_include": [
+        ".mobileconfig",
+        ".plist",
+        ".xml"
+      ],
+      "max_file_size_bytes": 1048576
+    }
+  ]
+}

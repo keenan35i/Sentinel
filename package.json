@@ -1,0 +1,70 @@
+{
+  "name": "mac-sentinel-electron",
+  "version": "3.2.0",
+  "private": true,
+  "description": "Local-first macOS security triage app with a Python scan engine, React renderer, and Electron desktop shell.",
+  "author": "OpenAI",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "backend:install": "python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && pip install -r requirements-dev.txt",
+    "frontend:dev": "vite --host 127.0.0.1 --port 5173",
+    "frontend:build": "vite build",
+    "electron:dev": "wait-on tcp:5173 && cross-env MAC_SENTINEL_DESKTOP_DEV_URL=http://127.0.0.1:5173 electron .",
+    "dev": "concurrently -k \"npm:frontend:dev\" \"npm:electron:dev\"",
+    "build": "vite build",
+    "app:dir": "vite build && python3 scripts/build_backend.py --mode dir && electron-builder --dir",
+    "dist:mac": "vite build && python3 scripts/build_backend.py --mode package && electron-builder --mac zip -c.mac.identity=null",
+    "dist": "vite build && python3 scripts/build_backend.py --mode package && electron-builder"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^36.3.2",
+    "electron-builder": "^26.0.12",
+    "vite": "^7.1.7",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "ai.openai.macsentinel",
+    "productName": "Mac Sentinel",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/renderer/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-dist",
+        "to": "backend"
+      },
+      {
+        "from": "data",
+        "to": "data"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
+    }
+  }
+}

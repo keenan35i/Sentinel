@@ -1,0 +1,11 @@
+services:
+  mac-sentinel:
+    build: .
+    container_name: mac-sentinel
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./:/app
+    environment:
+      - MAC_SENTINEL_HOST=0.0.0.0
+      - MAC_SENTINEL_PORT=8765
