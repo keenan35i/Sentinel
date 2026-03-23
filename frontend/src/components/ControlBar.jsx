@@ -3,16 +3,19 @@ import React from 'react';
 export default function ControlBar({
   scanStatus,
   monitorStatus,
+  protectionStatus,
   rulesMeta,
   onStartScan,
   onPauseScan,
   onResumeScan,
   onStopScan,
   onToggleMonitor,
+  onToggleProtection,
   onReloadRules,
   onOpenPermissions,
 }) {
   const monitorChecked = Boolean(monitorStatus.running);
+  const protectionChecked = Boolean(protectionStatus.running || protectionStatus.enabled);
   return (
     <section className="card stack-gap-md">
       <div className="section-header">
@@ -37,6 +40,14 @@ export default function ControlBar({
             <input type="checkbox" checked={monitorChecked} onChange={(event) => onToggleMonitor(event.target.checked)} />
             <span className="toggle-slider" />
             <span>{monitorChecked ? 'Monitoring network activity' : 'Monitoring is off'}</span>
+          </label>
+        </div>
+        <div className="control-group">
+          <span className="control-label">Active protection</span>
+          <label className="toggle-row">
+            <input type="checkbox" checked={protectionChecked} onChange={(event) => onToggleProtection(event.target.checked)} />
+            <span className="toggle-slider" />
+            <span>{protectionChecked ? 'Blocking high-confidence local threats' : 'Active protection is off'}</span>
           </label>
         </div>
         <div className="control-group">

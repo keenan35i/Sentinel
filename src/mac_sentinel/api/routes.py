@@ -12,6 +12,7 @@ from ..models import (
     ActionRequest,
     ActionResult,
     ConnectionsResponse,
+    CollectHostTriageRequest,
     DiagnosticsResponse,
     FindingsResponse,
     ImportArtifactsRequest,
@@ -19,6 +20,7 @@ from ..models import (
     IntelligenceStateResponse,
     LogsResponse,
     MonitorStatusResponse,
+    ProtectionStatusResponse,
     RevisionsResponse,
     RuleMetadataResponse,
     ScanStatusResponse,
@@ -33,6 +35,7 @@ def build_router(app_services: Dict) -> APIRouter:
     scanner = app_services['scanner']
     monitor = app_services['monitor']
     remediation = app_services['remediation']
+    protection = app_services.get('protection')
     diagnostics = app_services['diagnostics']
     intelligence = app_services.get('intelligence')
     forensics = app_services.get('forensics')
@@ -139,6 +142,38 @@ def build_router(app_services: Dict) -> APIRouter:
     def monitor_logs():
         return LogsResponse(logs=state.monitor_logs())
 
+
+    @router.post('/protection/enable', response_model=ProtectionStatusResponse)
+    def protection_enable():
+        if not protection:
+            raise HTTPException(status_code=503, detail='Active protection service is not available.')
+        protection.start()
+        return ProtectionStatusResponse(**state.protection_status())
+
+    @router.post('/protection/disable', response_model=ProtectionStatusResponse)
+    def protection_disable():
+        if not protection:
+            raise HTTPException(status_code=503, detail='Active protection service is not available.')
+        protection.stop()
+        return ProtectionStatusResponse(**state.protection_status())
+
+    @router.get('/protection/status', response_model=ProtectionStatusResponse)
+    def protection_status():
+        return ProtectionStatusResponse(**state.protection_status())
+
+    @router.get('/protection/events', response_model=FindingsResponse)
+    def protection_events():
+        return FindingsResponse(findings=state.protection_events())
+
+    @router.get('/protection/logs', response_model=LogsResponse)
+    def protection_logs():
+        return LogsResponse(logs=state.protection_logs())
+
+    @router.delete('/protection/events', response_model=ActionResult)
+    def clear_protection_events():
+        state.clear_protection_events()
+        return ActionResult(ok=True, actions=['Cleared active protection events'])
+
     @router.get('/rules/metadata', response_model=RuleMetadataResponse)
     def rule_metadata():
         return RuleMetadataResponse(**rules.metadata())
@@ -177,6 +212,14 @@ def build_router(app_services: Dict) -> APIRouter:
         if not forensics:
             raise HTTPException(status_code=503, detail='Local forensic intake service is not available.')
         result = forensics.import_paths(payload.paths)
+        return ImportArtifactsResponse(**result)
+
+
+    @router.post('/intelligence/collect-host-triage', response_model=ImportArtifactsResponse)
+    def collect_host_triage(payload: CollectHostTriageRequest):
+        if not forensics:
+            raise HTTPException(status_code=503, detail='Local forensic intake service is not available.')
+        result = forensics.collect_host_triage(last_minutes=payload.last_minutes)
         return ImportArtifactsResponse(**result)
 
     @router.delete('/intelligence/state', response_model=ActionResult)

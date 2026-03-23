@@ -292,6 +292,29 @@ class RuntimeCollector:
                 return host, None
         return value, None
 
+
+    def collect_unified_logs_json(self, last_minutes: int = 90, predicate: str = '') -> List[Dict]:
+        self._cooperate()
+        minutes = max(5, min(int(last_minutes or 90), 24 * 60))
+        command = ['log', 'show', '--style', 'json', '--last', f'{minutes}m']
+        if predicate:
+            command.extend(['--predicate', predicate])
+        payload = self.run_command(command, timeout=40)
+        rows: List[Dict] = []
+        for line in payload.splitlines():
+            line = line.strip()
+            if not line or not line.startswith('{'):
+                continue
+            try:
+                item = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(item, dict):
+                rows.append(item)
+                if len(rows) >= 5000:
+                    break
+        return rows
+
     def collect_installed_profiles(self) -> List[Dict]:
         commands = [
             ['profiles', 'show', '-type', 'configuration', '-output', 'stdout-xml'],
@@ -635,34 +658,121 @@ class RuntimeCollector:
         return rows
 
     def collect_background_items(self, limit: int = 120) -> List[Dict]:
-        output = self.run_command(['sfltool', 'dumpbtm'], timeout=18)
+        """
+        Collect background-item style persistence candidates without invoking
+        `sfltool dumpbtm`.
+
+        On newer macOS versions, `sfltool dumpbtm` can trigger an interactive
+        authorization prompt (the exact popup the user reported). For this app,
+        avoiding that prompt is more important than getting Apple's full BTM
+        view, so we stay in read-only userland and enumerate common persistence
+        locations that do not require elevation.
+        """
         rows: List[Dict] = []
-        current: Dict[str, str] = {}
-        for line in output.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                if current:
-                    rows.append(dict(current))
-                    current = {}
-                    if len(rows) >= limit:
-                        break
-                continue
-            if ':' in stripped:
-                key, value = stripped.split(':', 1)
-                current[key.strip().lower().replace(' ', '_')] = value.strip()
-        if current and len(rows) < limit:
-            rows.append(current)
-        normalized: List[Dict] = []
-        for item in rows:
-            path_value = item.get('url') or item.get('item_url') or item.get('path') or ''
-            normalized.append({
+        seen: set[str] = set()
+
+        candidate_paths = [
+            os.path.expanduser('~/Library/LaunchAgents'),
+            '/Library/LaunchAgents',
+            '/Library/LaunchDaemons',
+        ]
+
+        def _add_item(item: Dict) -> None:
+            nonlocal rows
+            path_value = str(item.get('path', '') or '')
+            identifier = str(item.get('identifier', '') or '')
+            dedupe_key = f'{identifier}|{path_value}'
+            if dedupe_key in seen:
+                return
+            seen.add(dedupe_key)
+            rows.append({
                 'path': path_value,
-                'identifier': item.get('identifier', ''),
-                'type': item.get('type', ''),
-                'team_identifier': item.get('team_identifier', ''),
-                'disposition': item.get('disposition', ''),
+                'identifier': identifier,
+                'type': str(item.get('type', '') or 'background-item'),
+                'team_identifier': str(item.get('team_identifier', '') or ''),
+                'disposition': str(item.get('disposition', '') or 'filesystem-enumerated'),
             })
-        return normalized
+
+        for base in candidate_paths:
+            self._cooperate()
+            if not os.path.isdir(base):
+                continue
+            try:
+                names = sorted(os.listdir(base))
+            except Exception:
+                continue
+
+            for name in names:
+                self._cooperate()
+                if not name.endswith('.plist'):
+                    continue
+                plist_path = os.path.join(base, name)
+                plist_data = self.read_plist(plist_path)
+                label = str(plist_data.get('Label', '') or Path(plist_path).stem)
+
+                program = ''
+                if isinstance(plist_data.get('Program'), str):
+                    program = str(plist_data.get('Program', ''))
+                elif isinstance(plist_data.get('ProgramArguments'), list) and plist_data.get('ProgramArguments'):
+                    first = plist_data['ProgramArguments'][0]
+                    if isinstance(first, str):
+                        program = first
+
+                disposition_parts = ['plist']
+                if base.startswith('/Library/LaunchDaemons'):
+                    item_type = 'launch-daemon'
+                    disposition_parts.append('system')
+                elif base.startswith('/Library/LaunchAgents'):
+                    item_type = 'launch-agent'
+                    disposition_parts.append('global')
+                else:
+                    item_type = 'launch-agent'
+                    disposition_parts.append('user')
+
+                run_at_load = plist_data.get('RunAtLoad')
+                keep_alive = plist_data.get('KeepAlive')
+                if run_at_load:
+                    disposition_parts.append('run-at-load')
+                if keep_alive:
+                    disposition_parts.append('keep-alive')
+
+                _add_item({
+                    'path': program or plist_path,
+                    'identifier': label,
+                    'type': item_type,
+                    'team_identifier': '',
+                    'disposition': ','.join(disposition_parts),
+                })
+                if len(rows) >= limit:
+                    return rows
+
+        # Best-effort enumeration of user login/startup helpers inside common app
+        # locations without triggering macOS authorization prompts.
+        login_item_roots = [
+            os.path.expanduser('~/Applications'),
+            '/Applications',
+        ]
+        for root in login_item_roots:
+            self._cooperate()
+            if not os.path.isdir(root):
+                continue
+            for app_path in glob.glob(os.path.join(root, '*.app')):
+                self._cooperate()
+                helper_glob = os.path.join(app_path, 'Contents', 'Library', 'LoginItems', '*.app')
+                for helper_path in glob.glob(helper_glob):
+                    self._cooperate()
+                    helper_name = Path(helper_path).stem
+                    _add_item({
+                        'path': helper_path,
+                        'identifier': helper_name,
+                        'type': 'login-item-helper',
+                        'team_identifier': '',
+                        'disposition': 'bundle-login-item',
+                    })
+                    if len(rows) >= limit:
+                        return rows
+
+        return rows
 
     def collect_bundle_components(self, app_path: str, limit: int = 40) -> List[Dict]:
         rows: List[Dict] = []

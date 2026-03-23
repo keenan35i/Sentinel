@@ -38,7 +38,7 @@ class Finding:
 
 
 class ActionRequest(BaseModel):
-    source: str = Field(default="scan", pattern="^(scan|live|intel)$")
+    source: str = Field(default="scan", pattern="^(scan|live|intel|protect)$")
     finding_id: str
 
 
@@ -49,6 +49,12 @@ class ActionResult(BaseModel):
 
 class ImportArtifactsRequest(BaseModel):
     paths: List[str] = Field(default_factory=list)
+
+
+
+
+class CollectHostTriageRequest(BaseModel):
+    last_minutes: int = Field(default=90, ge=5, le=1440)
 
 
 class ImportArtifactsResponse(BaseModel):
@@ -90,6 +96,22 @@ class MonitorStatusResponse(BaseModel):
     error: str = ""
 
 
+
+
+class ProtectionStatusResponse(BaseModel):
+    enabled: bool
+    running: bool
+    mode: str = 'protect'
+    last_started: Optional[str] = None
+    last_cycle: Optional[str] = None
+    event_count: int = 0
+    blocked_count: int = 0
+    quarantined_count: int = 0
+    watched_path_count: int = 0
+    local_only: bool = True
+    error: str = ''
+
+
 class RuleMetadataResponse(BaseModel):
     schema_version: int
     rule_count: int
@@ -120,6 +142,9 @@ class RevisionsResponse(BaseModel):
     intelligence_artifacts: int
     intelligence_logs: int
     intelligence_summary: int
+    protection_status: int
+    protection_events: int
+    protection_logs: int
 
 
 class DiagnosticsResponse(BaseModel):

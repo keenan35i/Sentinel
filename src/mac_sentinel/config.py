@@ -19,6 +19,9 @@ class Settings:
     intelligence_log_retention: int = int(os.getenv("MAC_SENTINEL_INTELLIGENCE_LOG_RETENTION", "600"))
     intelligence_finding_retention: int = int(os.getenv("MAC_SENTINEL_INTELLIGENCE_FINDING_RETENTION", "300"))
     intelligence_artifact_retention: int = int(os.getenv("MAC_SENTINEL_INTELLIGENCE_ARTIFACT_RETENTION", "80"))
+    protection_log_retention: int = int(os.getenv("MAC_SENTINEL_PROTECTION_LOG_RETENTION", "1400"))
+    protection_event_retention: int = int(os.getenv("MAC_SENTINEL_PROTECTION_EVENT_RETENTION", "350"))
+    active_protection_interval_seconds: int = int(os.getenv("MAC_SENTINEL_ACTIVE_PROTECTION_INTERVAL", "4"))
     sse_wait_seconds: int = int(os.getenv("MAC_SENTINEL_SSE_WAIT_SECONDS", "20"))
     local_state_root: str = os.getenv("MAC_SENTINEL_STATE_DIR", "~/.mac_sentinel")
 
@@ -47,6 +50,12 @@ class Settings:
     @property
     def local_db_path(self) -> Path:
         return self.local_state_dir / "mac_sentinel_local.db"
+
+    @property
+    def quarantine_dir(self) -> Path:
+        target = self.local_state_dir / "quarantine"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
 
 
 settings = Settings()

@@ -36,6 +36,19 @@ class AppStateStore:
         self._intel_summary: Dict = self._storage.get_snapshot('intelligence_summary', default={}) or {}
         self._intel_artifacts: List[Dict] = self._storage.get_snapshot('intelligence_artifacts', default=[]) or []
         self._intel_findings: List[Dict] = self._storage.get_snapshot('intelligence_findings', default=[]) or []
+        self._protection_status = self._storage.get_snapshot('protection_status', default=None) or {
+            'enabled': False,
+            'running': False,
+            'mode': 'protect',
+            'last_started': None,
+            'last_cycle': None,
+            'event_count': len(self._storage.list_entries('protection_events', settings.protection_event_retention)),
+            'blocked_count': 0,
+            'quarantined_count': 0,
+            'watched_path_count': 0,
+            'local_only': True,
+            'error': '',
+        }
         self._scan_status = {
             'running': False,
             'paused': False,
@@ -70,6 +83,9 @@ class AppStateStore:
             'intelligence_artifacts': 0,
             'intelligence_logs': 0,
             'intelligence_summary': 0,
+            'protection_status': 0,
+            'protection_events': 0,
+            'protection_logs': 0,
         }
 
     def _bump(self, *names: str) -> None:
@@ -228,6 +244,8 @@ class AppStateStore:
                 collection = self.live_events()
             elif source == 'intel':
                 collection = self._intel_findings
+            elif source == 'protect':
+                collection = self.protection_events()
             else:
                 collection = self._scan_findings
             for item in collection:
@@ -311,6 +329,89 @@ class AppStateStore:
     def monitor_status(self) -> Dict:
         with self._lock:
             return dict(self._monitor_status)
+
+
+    def set_protection_config(self, enabled: bool, mode: str = 'protect') -> None:
+        with self._condition:
+            changed = self._protection_status.get('enabled') != bool(enabled) or self._protection_status.get('mode') != str(mode or 'protect')
+            self._protection_status['enabled'] = bool(enabled)
+            self._protection_status['mode'] = str(mode or 'protect')
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            if changed:
+                self._bump('protection_status')
+
+    def set_protection_running(self, running: bool, watched_path_count: Optional[int] = None) -> None:
+        with self._condition:
+            changed = self._protection_status.get('running') != bool(running)
+            self._protection_status['running'] = bool(running)
+            self._protection_status['error'] = ''
+            if watched_path_count is not None:
+                self._protection_status['watched_path_count'] = int(max(0, watched_path_count))
+                changed = True
+            if running:
+                self._protection_status['last_started'] = time.strftime('%Y-%m-%d %H:%M:%S')
+                changed = True
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            if changed:
+                self._bump('protection_status')
+
+    def update_protection_cycle(self, observed_events: int = 0) -> None:
+        with self._condition:
+            next_values = {
+                'last_cycle': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'event_count': len(self.protection_events()),
+            }
+            changed = any(self._protection_status.get(key) != value for key, value in next_values.items())
+            self._protection_status.update(next_values)
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            if changed:
+                self._bump('protection_status')
+
+    def record_protection_actions(self, blocked_delta: int = 0, quarantined_delta: int = 0) -> None:
+        with self._condition:
+            self._protection_status['blocked_count'] = int(self._protection_status.get('blocked_count', 0)) + int(max(0, blocked_delta))
+            self._protection_status['quarantined_count'] = int(self._protection_status.get('quarantined_count', 0)) + int(max(0, quarantined_delta))
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            self._bump('protection_status')
+
+    def append_protection_events(self, events: List[Dict], limit: Optional[int] = None) -> None:
+        retention = limit or settings.protection_event_retention
+        with self._condition:
+            for item in events:
+                fingerprint = item.get('finding_id') or ''
+                self._storage.append_entry('protection_events', item, retention=retention, fingerprint=fingerprint)
+            self._protection_status['event_count'] = len(self.protection_events())
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            self._bump('protection_events', 'protection_status')
+
+    def clear_protection_events(self) -> None:
+        with self._condition:
+            self._storage.clear_entries('protection_events')
+            self._protection_status['event_count'] = 0
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            self._bump('protection_events', 'protection_status')
+
+    def protection_events(self) -> List[Dict]:
+        return self._storage.list_entries('protection_events', settings.protection_event_retention)
+
+    def append_protection_log(self, message: str, level: str = 'info', phase: str = '', extra: Optional[Dict] = None, limit: Optional[int] = None) -> None:
+        with self._condition:
+            self._append_ring_log('protection_logs', limit or settings.protection_log_retention, message, level=level, phase=phase, extra=extra)
+            self._bump('protection_logs')
+
+    def protection_logs(self) -> List[Dict]:
+        return self._storage.list_entries('protection_logs', settings.protection_log_retention)
+
+    def fail_protection(self, error: str) -> None:
+        with self._condition:
+            self._protection_status.update({'running': False, 'error': error})
+            self._storage.set_snapshot('protection_status', self._protection_status)
+            self._append_ring_log('protection_logs', settings.protection_log_retention, f'Active protection error: {error}', level='error', phase='error')
+            self._bump('protection_status', 'protection_logs')
+
+    def protection_status(self) -> Dict:
+        with self._lock:
+            return dict(self._protection_status)
 
     def set_intelligence_snapshot(self, artifacts: List[Dict], findings: List[Dict], summary: Dict) -> None:
         with self._condition:

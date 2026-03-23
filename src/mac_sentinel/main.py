@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from .api.routes import build_router
 from .config import settings
+from .core.active_protection import ActiveProtectionService
 from .core.diagnostics import DiagnosticsService
 from .core.forensics import LocalArtifactIntelligenceService
 from .core.host_intelligence import HostIntelligenceService
@@ -23,7 +24,7 @@ def create_application() -> FastAPI:
     state = AppStateStore(storage=storage)
     rules = RuleRepository(settings.rules_path)
     intelligence = HostIntelligenceService(collector=collector, storage=storage)
-    forensic_intelligence = LocalArtifactIntelligenceService(state_store=state)
+    forensic_intelligence = LocalArtifactIntelligenceService(state_store=state, collector=collector)
     scanner = ScanService(
         collector=collector,
         rule_repository=rules,
@@ -32,6 +33,7 @@ def create_application() -> FastAPI:
     )
     monitor = MonitorService(scan_service=scanner, state_store=state, interval_seconds=settings.monitor_interval_seconds)
     remediation = RemediationService()
+    protection = ActiveProtectionService(collector=collector, scan_service=scanner, state_store=state, remediation=remediation, storage=storage, interval_seconds=settings.active_protection_interval_seconds)
     diagnostics = DiagnosticsService(collector=collector, intelligence=intelligence)
 
     services = {
@@ -40,6 +42,7 @@ def create_application() -> FastAPI:
         'scanner': scanner,
         'monitor': monitor,
         'remediation': remediation,
+        'protection': protection,
         'diagnostics': diagnostics,
         'intelligence': intelligence,
         'forensics': forensic_intelligence,

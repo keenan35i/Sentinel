@@ -52,11 +52,12 @@ class DiagnosticsService:
             "Run the app natively on macOS rather than inside Docker when you want real host visibility.",
             "Grant Full Disk Access to the packaged Mac Sentinel app if protected folders are not readable. During development, grant access to the terminal app only if you are launching from the command line.",
             "Use the diagnostics panel to confirm commands like ps, launchctl, lsof, codesign, and xattr are available before trusting a zero-findings scan.",
-            "Imported intelligence artifacts, STIX indicator files, and Apple threat-notification files are analyzed locally only. Mac Sentinel does not upload them to third-party services.",
+            "Imported intelligence artifacts, STIX indicator files, Apple threat-notification files, and active-protection telemetry are analyzed locally only. Mac Sentinel does not upload them to third-party services.",
         ]
         notes = [
             "macOS does not let a normal app silently self-grant Full Disk Access. Mac Sentinel can open the settings pane, but you still need to approve access manually for the specific app bundle you use.",
             "Zero findings does not always mean zero activity. It can also mean the current ruleset did not match, the machine is clean, or permissions were limited.",
+            "The new Active Protection mode uses local polling and bounded snapshots to approximate always-on protection while this app is running. True EndpointSecurity or network-content blocking still requires a separately signed Apple system extension with the right entitlements.",
         ]
         advanced_checks = self.intelligence.diagnostics_summary() if self.intelligence else {}
         return {

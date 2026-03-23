@@ -66,6 +66,12 @@ export const api = {
   monitorLogs: () => request('/api/monitor/logs'),
   startMonitor: () => request('/api/monitor/start', { method: 'POST' }),
   stopMonitor: () => request('/api/monitor/stop', { method: 'POST' }),
+
+  protectionStatus: () => request('/api/protection/status'),
+  protectionEvents: () => request('/api/protection/events'),
+  protectionLogs: () => request('/api/protection/logs'),
+  enableProtection: () => request('/api/protection/enable', { method: 'POST' }),
+  disableProtection: () => request('/api/protection/disable', { method: 'POST' }),
   rulesMetadata: () => request('/api/rules/metadata'),
   reloadRules: () => request('/api/rules/reload', { method: 'POST' }),
   openPermissionSettings: () => request('/api/permissions/open-full-disk-access', { method: 'POST' }),

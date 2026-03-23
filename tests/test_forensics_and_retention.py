@@ -119,3 +119,76 @@ def test_host_intelligence_flags_unsigned_quarantined_download_and_trust_context
     rule_ids = {item.rule_id for item in findings}
     assert 'quarantined_unsigned_downloaded_executable' in rule_ids
     assert 'custom_trust_settings_present' in rule_ids
+
+class AdvancedForensicsCollector:
+    def collect_unified_logs_json(self, last_minutes: int = 90, predicate: str = ''):
+        return [
+            {
+                'eventMessage': 'MessagesBlastDoorService crash observed in triage window',
+                'subsystem': 'com.apple.messages',
+            },
+            {
+                'eventMessage': 'imagent activity observed near the same triage window',
+                'subsystem': 'com.apple.identityservices',
+            },
+            {
+                'eventMessage': 'tccd updated privacy decision for client',
+                'subsystem': 'com.apple.TCC',
+            },
+            {
+                'eventMessage': 'kTCCServiceMicrophone decision reevaluated for client',
+                'subsystem': 'com.apple.TCC',
+            },
+            {
+                'eventMessage': 'ConfigurationProfiles profile install completed',
+                'subsystem': 'com.apple.ManagedClient',
+            },
+        ]
+
+    def collect_diagnostic_reports(self, days: int = 7, limit: int = 120):
+        return [
+            {'process': 'MessagesBlastDoorService', 'path': '/tmp/a.ips', 'mtime': 1},
+            {'process': 'MessagesBlastDoorService', 'path': '/tmp/b.ips', 'mtime': 2},
+        ]
+
+
+def test_forensic_import_supports_endpointsecurity_and_memory_correlation(tmp_path: Path):
+    es_file = tmp_path / 'endpointsecurity.jsonl'
+    es_file.write_text('\n'.join([
+        json.dumps({
+            'event_type': 'NOTIFY_EXEC',
+            'process': {'path': '/Users/test/Downloads/dropper'},
+        }),
+        json.dumps({
+            'event_type': 'NOTIFY_OPEN',
+            'process': {'path': '/Users/test/Downloads/dropper'},
+            'target': {'path': '/Users/test/Library/LaunchAgents/com.fake.agent.plist'},
+        }),
+    ]), encoding='utf-8')
+
+    vmmap_file = tmp_path / 'vmmap_sample.txt'
+    vmmap_file.write_text('DYLD_INSERT_LIBRARIES\nW+X region\n/private/var/folders/example/libpayload.dylib', encoding='utf-8')
+
+    state = AppStateStore()
+    service = LocalArtifactIntelligenceService(state_store=state)
+    result = service.import_paths([str(es_file), str(vmmap_file)])
+
+    rule_ids = {item['rule_id'] for item in result['findings']}
+    assert 'endpointsecurity_exec_to_persistence_chain' in rule_ids
+    assert 'memory_artifact_suspicious_api_marker' in rule_ids
+    assert 'correlated_endpoint_chain_plus_memory' in rule_ids
+
+
+
+def test_collect_host_triage_uses_unified_logs_and_diagnostic_context():
+    state = AppStateStore()
+    service = LocalArtifactIntelligenceService(state_store=state, collector=AdvancedForensicsCollector())
+    result = service.collect_host_triage(last_minutes=60)
+
+    assert result['ok'] is True
+    assert result['imported_count'] >= 1
+    rule_ids = {item['rule_id'] for item in result['findings']}
+    assert 'unified_log_messages_attack_surface_burst' in rule_ids
+    assert 'unified_log_tcc_context' in rule_ids
+    assert 'unified_log_profile_context' in rule_ids
+    assert 'unified_log_attack_surface_plus_tcc_chain' in rule_ids

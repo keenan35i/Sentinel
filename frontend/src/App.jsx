@@ -68,6 +68,9 @@ export default function App() {
   const [monitorEvents, setMonitorEvents] = useState([]);
   const [monitorConnections, setMonitorConnections] = useState([]);
   const [monitorLogs, setMonitorLogs] = useState([]);
+  const [protectionStatus, setProtectionStatus] = useState({});
+  const [protectionEvents, setProtectionEvents] = useState([]);
+  const [protectionLogs, setProtectionLogs] = useState([]);
   const [intelArtifacts, setIntelArtifacts] = useState([]);
   const [intelFindings, setIntelFindings] = useState([]);
   const [intelLogs, setIntelLogs] = useState([]);
@@ -98,7 +101,7 @@ export default function App() {
   }, []);
 
   const loadDynamicAll = useCallback(async () => {
-    const [revisions, nextScanStatus, nextScanFindings, nextScanLogs, nextMonitorStatus, nextMonitorEvents, nextMonitorConnections, nextMonitorLogs, nextIntelState, nextIntelLogs] = await Promise.all([
+    const [revisions, nextScanStatus, nextScanFindings, nextScanLogs, nextMonitorStatus, nextMonitorEvents, nextMonitorConnections, nextMonitorLogs, nextProtectionStatus, nextProtectionEvents, nextProtectionLogs, nextIntelState, nextIntelLogs] = await Promise.all([
       api.revisions(),
       api.scanStatus(),
       api.scanFindings(),
@@ -107,6 +110,9 @@ export default function App() {
       api.monitorEvents(),
       api.monitorConnections(),
       api.monitorLogs(),
+      api.protectionStatus(),
+      api.protectionEvents(),
+      api.protectionLogs(),
       api.intelligenceState(),
       api.intelligenceLogs(),
     ]);
@@ -118,6 +124,9 @@ export default function App() {
     setMonitorEvents(nextMonitorEvents.findings || []);
     setMonitorConnections(nextMonitorConnections.connections || []);
     setMonitorLogs(nextMonitorLogs.logs || []);
+    setProtectionStatus(nextProtectionStatus);
+    setProtectionEvents(nextProtectionEvents.findings || []);
+    setProtectionLogs(nextProtectionLogs.logs || []);
     setIntelArtifacts(nextIntelState.artifacts || []);
     setIntelFindings(nextIntelState.findings || []);
     setIntelSummary(nextIntelState.summary || {});
@@ -132,7 +141,7 @@ export default function App() {
       const prev = revisionsRef.current;
       const firstLoad = !prev || force;
       const changedKeys = firstLoad
-        ? ['scan_status', 'scan_findings', 'scan_logs', 'monitor_status', 'monitor_events', 'monitor_connections', 'monitor_logs', 'intelligence_findings', 'intelligence_artifacts', 'intelligence_logs', 'intelligence_summary']
+        ? ['scan_status', 'scan_findings', 'scan_logs', 'monitor_status', 'monitor_events', 'monitor_connections', 'monitor_logs', 'protection_status', 'protection_events', 'protection_logs', 'intelligence_findings', 'intelligence_artifacts', 'intelligence_logs', 'intelligence_summary']
         : Object.keys(nextRevisions).filter((key) => nextRevisions[key] !== prev[key]);
 
       if (changedKeys.length === 0) {
@@ -156,6 +165,9 @@ export default function App() {
       maybeFetch(['monitor_events'], api.monitorEvents, setMonitorEvents, (payload) => payload.findings || []);
       maybeFetch(['monitor_connections'], api.monitorConnections, setMonitorConnections, (payload) => payload.connections || []);
       maybeFetch(['monitor_logs'], api.monitorLogs, setMonitorLogs, (payload) => payload.logs || []);
+      maybeFetch(['protection_status'], api.protectionStatus, setProtectionStatus);
+      maybeFetch(['protection_events'], api.protectionEvents, setProtectionEvents, (payload) => payload.findings || []);
+      maybeFetch(['protection_logs'], api.protectionLogs, setProtectionLogs, (payload) => payload.logs || []);
       maybeFetch(['intelligence_findings', 'intelligence_artifacts', 'intelligence_summary'], api.intelligenceState, (payload) => {
         setIntelArtifacts(payload.artifacts || []);
         setIntelFindings(payload.findings || []);
@@ -286,18 +298,28 @@ export default function App() {
         />
         <div className="main-grid">
           <div className="column column-main">
-            <StatusPanel scanStatus={scanStatus} monitorStatus={monitorStatus} diagnostics={diagnostics} intelligenceSummary={intelSummary} />
+            <StatusPanel scanStatus={scanStatus} monitorStatus={monitorStatus} protectionStatus={protectionStatus} diagnostics={diagnostics} intelligenceSummary={intelSummary} />
             <ControlBar
               scanStatus={scanStatus}
               monitorStatus={monitorStatus}
+              protectionStatus={protectionStatus}
               rulesMeta={rulesMeta}
               onStartScan={() => runAction(() => api.startScan(), 'Full scan started')}
               onPauseScan={() => runAction(() => api.pauseScan(), 'Scan paused')}
               onResumeScan={() => runAction(() => api.resumeScan(), 'Scan resumed')}
               onStopScan={() => runAction(() => api.stopScan(), 'Scan stop requested')}
               onToggleMonitor={(checked) => runAction(() => checked ? api.startMonitor() : api.stopMonitor(), checked ? 'Live monitor started' : 'Live monitor stopped')}
+              onToggleProtection={(checked) => runAction(() => checked ? api.enableProtection() : api.disableProtection(), checked ? 'Active protection enabled' : 'Active protection disabled')}
               onReloadRules={() => runAction(() => api.reloadRules(), 'Rules reloaded')}
               onOpenPermissions={() => runAction(() => api.openPermissionSettings(), 'Opened Full Disk Access settings')}
+            />
+            <FindingsPanel
+              title="Active protection events"
+              findings={protectionEvents}
+              source="protect"
+              onCopyPrompt={handleCopyPrompt}
+              onOpen={(source, id) => runAction(() => api.openFinding(source, id))}
+              onRemediate={(source, id) => runAction(() => api.remediateFinding(source, id), 'Remediation requested')}
             />
             <IntelligencePanel
               summary={intelSummary}
@@ -337,6 +359,7 @@ export default function App() {
             <LogsPanel title="Scan log" logs={scanLogs} />
             <LogsPanel title="Imported intelligence log" logs={intelLogs} />
             <LogsPanel title="Live monitor log" logs={monitorLogs} />
+            <LogsPanel title="Active protection log" logs={protectionLogs} />
           </div>
         </div>
       </div>
